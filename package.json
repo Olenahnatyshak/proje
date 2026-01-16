@@ -1,0 +1,18 @@
+{
+  "name": "macfit_kds_node",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MacFit karar destek sistemi - Node.js/Express uyarlamasi",
+  "main": "app.js",
+  "scripts": {
+    "dev": "node app.js",
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "ejs": "^3.1.10",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "mysql2": "^3.9.2"
+  }
+}

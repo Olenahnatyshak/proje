@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spor Salonu Karar Destek Sistemi</title>
+  <link rel="icon" type="image/jpeg" href="/logo.jpeg">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
+  <script>
+    // Basit tablo sıralama: tablo başlıklarına tıklayarak sırala
+    document.addEventListener('DOMContentLoaded', () => {
+      const normalizeValue = (text) => {
+        if (!text) return { type: 'text', value: '' };
+        const cleaned = text
+          .replace(/\s+/g, '')
+          .replace(/TL/gi, '')
+          .replace(/%/g, '')
+          .replace(/\./g, '')
+          .replace(/,/g, '.');
+        const numeric = parseFloat(cleaned);
+        if (Number.isFinite(numeric)) {
+          return { type: 'num', value: numeric };
+        }
+        return { type: 'text', value: text.toLocaleLowerCase('tr-TR') };
+      };
+
+      const sortTable = (table, columnIndex, th) => {
+        const tbody = table.tBodies[0];
+        if (!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const currentDir = th.dataset.sortDir === 'asc' ? 'asc' : 'desc';
+        const nextDir = currentDir === 'asc' ? 'desc' : 'asc';
+
+        table.querySelectorAll('th').forEach((head) => head.removeAttribute('data-sort-dir'));
+        th.dataset.sortDir = nextDir;
+
+        const sortedRows = rows.sort((a, b) => {
+          const aVal = normalizeValue(a.cells[columnIndex]?.textContent.trim());
+          const bVal = normalizeValue(b.cells[columnIndex]?.textContent.trim());
+
+          if (aVal.type === 'num' && bVal.type === 'num') {
+            return nextDir === 'asc' ? aVal.value - bVal.value : bVal.value - aVal.value;
+          }
+          return nextDir === 'asc'
+            ? String(aVal.value).localeCompare(String(bVal.value), 'tr-TR')
+            : String(bVal.value).localeCompare(String(aVal.value), 'tr-TR');
+        });
+
+        sortedRows.forEach((row) => tbody.appendChild(row));
+      };
+
+      document.querySelectorAll('table.sortable-table').forEach((table) => {
+        const headers = table.querySelectorAll('thead th');
+        headers.forEach((th, idx) => {
+          th.style.cursor = 'pointer';
+          th.addEventListener('click', () => sortTable(table, idx, th));
+        });
+      });
+    });
+  </script>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <h2>Spor Salonu<br>Karar Destek Sistemi</h2>
+      <ul>
+        <li>
+          <a href="/dashboard" class="<%= currentPath === '/dashboard' ? 'aktif' : '' %>">
+            <span class="menu-icon">📊</span>
+            <span>Şube Analizleri</span>
+          </a>
+        </li>
+        <li>
+          <a href="/performans-ozeti" class="<%= currentPath === '/performans-ozeti' ? 'aktif' : '' %>">
+            <span class="menu-icon">📈</span>
+            <span>İlçelere Göre Performans</span>
+          </a>
+        </li>
+        <li>
+          <a href="/oneriler" class="<%= currentPath === '/oneriler' ? 'aktif' : '' %>">
+            <span class="menu-icon">💡</span>
+            <span>Öneriler</span>
+          </a>
+        </li>
+        <li>
+          <a href="/harita" class="<%= currentPath === '/harita' ? 'aktif' : '' %>">
+            <span class="menu-icon">🗺️</span>
+            <span>Harita Analizi</span>
+          </a>
+        </li>
+        <li>
+          <a href="/logout">
+            <span class="menu-icon">↩</span>
+            <span>Çıkış</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+    <div class="main-content">

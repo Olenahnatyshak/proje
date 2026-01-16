@@ -1,0 +1,75 @@
+<%- include('partials/header') %>
+<!-- İlçeler için performans özet tablosu -->
+<%
+  // Sayıları tablo için okunur formata çevirir
+  const fmtNum = (v, frac = 0) => new Intl.NumberFormat('tr-TR', {
+    minimumFractionDigits: frac,
+    maximumFractionDigits: frac
+  }).format(v || 0);
+%>
+
+<div class="header">
+  <h1>Tüm İlçeler - Performans Özeti (Son <%= zaman_araligi %> Ay)</h1>
+  <p>İzmir genelindeki tüm ilçelerin şube performanslarının toplu görünümü.</p>
+  <div style="margin-top:8px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+    <span style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; background:#e8f7f0; color:#0f5132; border:1px solid #d1e7dd; font-size:14px;">
+      <span style="width:14px; height:14px; border-radius:3px; background:#22c55e; display:inline-block;"></span>
+      Yüksek kârlılık (≥ %25)
+    </span>
+    <span style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; background:#fde8e8; color:#842029; border:1px solid #f5c2c7; font-size:14px;">
+      <span style="width:14px; height:14px; border-radius:3px; background:#e74c3c; display:inline-block;"></span>
+      Düşük kârlılık (&lt; %10)
+    </span>
+    <span style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; background:#fff1d6; color:#8a5b20; border:1px solid #ffd797; font-size:14px;">
+      <span style="width:14px; height:14px; border-radius:3px; background:#ffecb5; display:inline-block;"></span>
+      Orta seviye kârlılık
+    </span>
+  </div>
+</div>
+
+<!-- Zaman aralığı filtresi -->
+<form action="/performans-ozeti" method="get" class="filtre-form" style="margin-bottom: 20px;">
+  <label for="zaman_araligi">Zaman Aralığı:</label>
+  <select name="zaman_araligi" id="zaman_araligi">
+    <option value="6" <%= zaman_araligi === 6 ? 'selected' : '' %>>Son 6 Ay</option>
+    <option value="12" <%= zaman_araligi === 12 ? 'selected' : '' %>>Son 12 Ay</option>
+  </select>
+  <button type="submit">Güncelle</button>
+</form>
+
+<!-- Karlılık ve kapasite göstergeleriyle sıralanabilir tablo -->
+<table class="performans-tablosu sortable-table">
+  <thead>
+    <tr>
+      <th>İlçe Adı</th>
+      <th>Şube Sayısı</th>
+      <th>Toplam Gelir (TL)</th>
+      <th>Toplam Kar (TL)</th>
+      <th>Karlılık Oranı (%)</th>
+      <th>Ort. Üye Sayısı</th>
+      <th>Kapasite Kullanımı (%)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% sonuclar.forEach((satir) => {
+      const toplam_kar = (satir.ToplamGelir || 0) - (satir.ToplamMaliyet || 0);
+      const karlilik_orani = satir.ToplamGelir > 0 ? (toplam_kar / satir.ToplamGelir) * 100 : 0;
+      const kapasite_kullanimi = satir.ToplamKapasite > 0 ? (satir.OrtalamaAktifUye / satir.ToplamKapasite) * 100 : 0;
+      let sinif = 'orta-performans';
+      if (karlilik_orani >= 25) sinif = 'iyi-performans';
+      else if (karlilik_orani < 10) sinif = 'kotu-performans';
+    %>
+      <tr class="<%= sinif %>">
+        <td><%= satir.ilce_adi %></td>
+        <td><%= satir.SubeSayisi %></td>
+        <td><%= fmtNum(satir.ToplamGelir) %></td>
+        <td><%= fmtNum(toplam_kar) %></td>
+        <td><%= fmtNum(karlilik_orani, 1) %>%</td>
+        <td><%= fmtNum(satir.OrtalamaAktifUye) %></td>
+        <td><%= fmtNum(kapasite_kullanimi, 1) %>%</td>
+      </tr>
+    <% }); %>
+  </tbody>
+</table>
+
+<%- include('partials/footer') %>

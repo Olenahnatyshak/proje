@@ -1,0 +1,364 @@
+<%- include('partials/header') %>
+<!-- İzmir ilçe/şube verilerinin harita ve tabloyla gösterimi -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<style>
+  /* Harita tonunu soğuk/maviye çevirip arka planı yumuşat */
+  #leafletHarita .leaflet-tile {
+    filter: saturate(0.8) hue-rotate(185deg) brightness(0.92);
+    opacity: 0.95;
+  }
+  #leafletHarita .leaflet-pane.leaflet-tile-pane {
+    filter: saturate(0.8) hue-rotate(185deg) brightness(0.92);
+  }
+</style>
+
+<div class="harita-sayfasi">
+  <div class="header">
+    <h1>İzmir Harita Analizi</h1>
+    <p>GeoJSON katmanını gerçek İzmir haritası üzerinde görüntüleyebilir ve filtreleyebilirsiniz.</p>
+    <div style="margin-top:8px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <span style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; background:#e8f7f0; color:#0f5132; border:1px solid #d1e7dd; font-size:14px;">
+        <span style="width:14px; height:14px; border-radius:3px; background:#22c55e; display:inline-block;"></span>
+        Yüksek kârlılık (≥ %25)
+      </span>
+      <span style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; background:#fde8e8; color:#842029; border:1px solid #f5c2c7; font-size:14px;">
+        <span style="width:14px; height:14px; border-radius:3px; background:#e74c3c; display:inline-block;"></span>
+        Düşük kârlılık (&lt; %10)
+      </span>
+      <span style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; background:#fff1d6; color:#8a5b20; border:1px solid #ffd797; font-size:14px;">
+        <span style="width:14px; height:14px; border-radius:3px; background:#ffecb5; display:inline-block;"></span>
+        Orta seviye kârlılık
+      </span>
+    </div>
+  </div>
+
+  <div class="harita-icerik">
+    <div class="izmir-harita-kapsayici">
+      <div id="leafletHarita"></div>
+    </div>
+    <div class="harita-kontrol-panel">
+      <label for="ilceSecimi">İlçe Seçimi</label>
+      <select id="ilceSecimi">
+        <option value="0">Tüm İzmir</option>
+        <% Object.entries(ilce_id_map).forEach(([id, ad]) => { %>
+          <option value="<%= id %>"><%= ad %></option>
+        <% }); %>
+      </select>
+
+      <label for="subeSecimi">Şube Seçimi</label>
+      <select id="subeSecimi" disabled>
+        <option value="0">Tüm Şubeler</option>
+      </select>
+
+      <label for="aySecimi">Ay Seçimi</label>
+      <select id="aySecimi">
+        <option value="0">Tüm Aylar</option>
+        <% Object.entries(aylar).forEach(([num, ad]) => { %>
+          <option value="<%= num %>"><%= ad %></option>
+        <% }); %>
+      </select>
+
+      <div class="secili-bilgi-kutusu">
+        <h3 id="seciliIlceEtiketi">Seçili İlçe: Tüm İzmir</h3>
+        <p id="seciliAyEtiketi">Ay: Tüm Aylar</p>
+        <p id="seciliSubeEtiketi">Şube: Tüm Şubeler</p>
+        <button type="button" id="tumIlcelerBtn">Seçimi Temizle</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="harita-tablo">
+    <table class="sortable-table">
+      <thead>
+        <tr>
+          <th>İlçe</th>
+          <th>Şube</th>
+          <th>Ay</th>
+          <th>Gelir (TL)</th>
+          <th>Maliyet (TL)</th>
+          <th>Kar (TL)</th>
+          <th>Aktif Üye</th>
+          <th>Nüfus</th>
+        </tr>
+      </thead>
+      <tbody id="haritaVeriTablo">
+        <tr>
+          <td colspan="8" class="bos-veri">Veriler yükleniyor...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const geoJsonUrl = '/ilceler.geojson';
+  const haritaVerileri = <%- JSON.stringify(harita_verileri || []) %>;
+  const aylar = <%- JSON.stringify(aylar || {}) %>;
+  const ilceIdMap = <%- JSON.stringify(ilce_id_map || {}) %>;
+  const ilceSlugMap = <%- JSON.stringify(ilce_slug_map || {}) %>;
+  const tumSubeler = <%- JSON.stringify(tum_subeler || []) %>;
+  let ilceKarHaritasi = {};
+
+  let seciliIlce = <%= secili_ilce_id %> || 0;
+  let seciliAy = <%= secili_ay %> || 0;
+  let seciliSube = <%= secili_sube_id %> || 0;
+  let geoJsonLayer = null;
+
+  const seciliIlceEtiketi = document.getElementById('seciliIlceEtiketi');
+  const seciliAyEtiketi = document.getElementById('seciliAyEtiketi');
+  const seciliSubeEtiketi = document.getElementById('seciliSubeEtiketi');
+  const ilceSecimi = document.getElementById('ilceSecimi');
+  const aySecimi = document.getElementById('aySecimi');
+  const subeSecimi = document.getElementById('subeSecimi');
+  const tabloGovde = document.getElementById('haritaVeriTablo');
+
+  // Leaflet haritayı oluştur ve temel katmanı ekle
+  const map = L.map('leafletHarita').setView([38.4, 27.13], 8);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: 'OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  const defaultStyle = { color: '#1e3a8a', weight: 1.4, opacity: 1, fillColor: '#3498db', fillOpacity: 0.6 };
+  const selectedStyle = { color: '#0f172a', weight: 2.2, opacity: 1, fillColor: '#0f172a', fillOpacity: 0.8 };
+
+  // GeoJSON içindeki isimleri ID'ye eşlemek için normalize edilecek karakter haritası
+  const ILCE_CHAR_MAP = { '\u00C7': 'C', '\u00E7': 'C', '\u011E': 'G', '\u011F': 'G', '\u0130': 'I', '\u0069': 'I', '\u0131': 'I', '\u00D6': 'O', '\u00F6': 'O', '\u015E': 'S', '\u015F': 'S', '\u00DC': 'U', '\u00FC': 'U' };
+  function normalizeIlceKey(value) {
+    if (!value) return '';
+    let text = value.toString().trim().toLocaleUpperCase('tr-TR');
+    text = text.replace(/[\u00C7\u00E7\u011E\u011F\u0130\u0131\u00D6\u00F6\u015E\u015F\u00DC\u00FC]/g, (char) => ILCE_CHAR_MAP[char] || char);
+    return text.replace(/[^A-Z0-9]/g, '');
+  }
+
+  function resolveFeatureIlceId(feature) {
+    const properties = feature.properties || {};
+    const idFields = ['ilce_id', 'ILCE_ID', 'id', 'ID'];
+    for (const field of idFields) {
+      const value = properties[field];
+      if (value !== undefined && value !== null && value !== '') {
+        const parsed = parseInt(value, 10);
+        if (!Number.isNaN(parsed)) return parsed;
+      }
+    }
+    const nameFields = ['ilce_adi', 'ILCE_ADI', 'adi', 'name', 'NAME'];
+    for (const field of nameFields) {
+      const value = properties[field];
+      if (value) {
+        const slug = normalizeIlceKey(value);
+        if (slug && ilceSlugMap[slug]) return ilceSlugMap[slug];
+      }
+    }
+    return null;
+  }
+
+  // İlçe karlılık oranına göre renk seçimi
+  function karRenk(oran) {
+    if (oran === null || isNaN(oran)) return { fill: '#dfe7f0', stroke: '#2c3e50', bg: '#fff', text: '#2c3e50' };
+    if (oran >= 25) return { fill: '#22c55e', stroke: '#22c55e', bg: '#e8f7f0', text: '#0f5132' }; // yüksek kârlılık
+    if (oran < 10) return { fill: '#e74c3c', stroke: '#e74c3c', bg: '#fde8e8', text: '#842029' };  // düşük kârlılık
+    return { fill: '#ffecb5', stroke: '#e3ad32', bg: '#fff1d6', text: '#8a5b20' };                 // orta seviye
+  }
+
+  function getFeatureStyle(feature) {
+    const id = resolveFeatureIlceId(feature);
+    const oran = ilceKarHaritasi[id] ?? null;
+    const renk = karRenk(oran);
+    if (seciliIlce !== 0 && id === seciliIlce) return { ...selectedStyle, fillColor: renk.fill, color: '#0f172a' };
+    return { ...defaultStyle, fillColor: renk.fill, color: '#1e3a8a' };
+  }
+
+  function onEachFeature(feature, layer) {
+    layer.on('click', () => {
+      const ilceId = resolveFeatureIlceId(feature);
+      if (!ilceId) return;
+      const sonrakiIlce = seciliIlce === ilceId ? 0 : ilceId;
+      seciliIlceyiAyarla(sonrakiIlce);
+    });
+  }
+
+  function updateLayerStyles() {
+    if (geoJsonLayer) {
+      geoJsonLayer.eachLayer((layer) => layer.setStyle(getFeatureStyle(layer.feature)));
+    }
+  }
+
+  function guncelleIlceKarHaritasi() {
+    const toplamlar = {};
+    haritaVerileri.forEach((veri) => {
+      const ayUyumu = seciliAy === 0 || veri.ay === seciliAy;
+      const subeUyumu = seciliSube === 0 || veri.sube_id == seciliSube;
+      if (!ayUyumu || !subeUyumu) return;
+      const ilceId = veri.ilce_id;
+      if (!toplamlar[ilceId]) toplamlar[ilceId] = { gelir: 0, maliyet: 0 };
+      toplamlar[ilceId].gelir += veri.toplam_gelir;
+      toplamlar[ilceId].maliyet += veri.toplam_maliyet;
+    });
+    const harita = {};
+    Object.entries(toplamlar).forEach(([id, t]) => {
+      const kar = t.gelir - t.maliyet;
+      const oran = t.gelir > 0 ? (kar / t.gelir) * 100 : null;
+      harita[id] = oran;
+    });
+    ilceKarHaritasi = harita;
+  }
+
+  // İlçe sınırlarını GeoJSON'dan yükle
+  fetch(geoJsonUrl)
+    .then((resp) => resp.json())
+    .then((data) => {
+      guncelleIlceKarHaritasi();
+      geoJsonLayer = L.geoJSON(data, { style: getFeatureStyle, onEachFeature }).addTo(map);
+      if (geoJsonLayer) {
+        map.fitBounds(geoJsonLayer.getBounds(), { padding: [20, 20] });
+        updateLayerStyles();
+      }
+    })
+    .catch((err) => console.warn('GeoJSON yüklenemedi:', err));
+
+  function seciliIlceyiAyarla(yeniIlce) {
+    seciliIlce = yeniIlce;
+    doldurSubeler(seciliIlce, 0);
+    seciliSube = 0;
+    guncelleSeciliSube();
+    ilceSecimi.value = seciliIlce === 0 ? '0' : seciliIlce.toString();
+    guncelleSeciliIlce();
+    tabloyuGuncelle();
+    guncelleIlceKarHaritasi();
+    updateLayerStyles();
+  }
+
+  function guncelleSeciliIlce() {
+    const ilceAdi = seciliIlce === 0 ? 'Tüm İzmir' : (ilceIdMap[seciliIlce] || 'Bilinmiyor');
+    seciliIlceEtiketi.textContent = `Seçili İlçe: ${ilceAdi}`;
+  }
+
+  function guncelleSeciliAy() {
+    const ayAdi = seciliAy === 0 ? 'Tüm Aylar' : (aylar[seciliAy] || seciliAy);
+    seciliAyEtiketi.textContent = `Ay: ${ayAdi}`;
+  }
+
+  function guncelleSeciliSube() {
+    let subeAdi = 'Tüm Şubeler';
+    if (seciliSube !== 0) {
+      const bulunan = tumSubeler.find((s) => s.sube_id == seciliSube);
+      if (bulunan) subeAdi = bulunan.sube_adi;
+    }
+    seciliSubeEtiketi.textContent = `Şube: ${subeAdi}`;
+  }
+
+  function formatCurrency(value) {
+    return value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TL';
+  }
+
+  // Filtrelere göre tablo satırlarını yeniden üret
+  function tabloyuGuncelle() {
+    const satirlar = haritaVerileri
+      .filter((veri) => {
+        const ilceUyumu = seciliIlce === 0 || veri.ilce_id == seciliIlce;
+        const ayUyumu = seciliAy === 0 || veri.ay === seciliAy;
+        const subeUyumu = seciliSube === 0 || veri.sube_id == seciliSube;
+        return ilceUyumu && ayUyumu && subeUyumu;
+      })
+      .sort((a, b) => {
+        if (a.yil !== b.yil) return a.yil - b.yil;
+        if (a.ay !== b.ay) return a.ay - b.ay;
+        return a.ilce_adi.localeCompare(b.ilce_adi, 'tr');
+      })
+      .map((veri) => {
+        const kar = veri.toplam_gelir - veri.toplam_maliyet;
+        const ayAdi = aylar[veri.ay] || veri.ay;
+        const karOran = veri.toplam_gelir > 0 ? (kar / veri.toplam_gelir) * 100 : null;
+        const renk = karRenk(karOran);
+        return `
+          <tr style="background:${renk.bg}; color:${renk.text};">
+            <td>${veri.ilce_adi}</td>
+            <td>${veri.sube_adi}</td>
+            <td>${ayAdi} ${veri.yil}</td>
+            <td>${formatCurrency(veri.toplam_gelir)}</td>
+            <td>${formatCurrency(veri.toplam_maliyet)}</td>
+            <td>${formatCurrency(kar)}</td>
+            <td>${veri.toplam_aktif_uye.toLocaleString('tr-TR')}</td>
+            <td>${veri.nufus.toLocaleString('tr-TR')}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    tabloGovde.innerHTML = satirlar || '<tr><td colspan="8" class="bos-veri">Seçilen filtrelere ait veri bulunamadı.</td></tr>';
+  }
+
+  document.getElementById('tumIlcelerBtn').addEventListener('click', () => {
+    seciliAy = 0;
+    aySecimi.value = '0';
+    guncelleSeciliAy();
+    seciliSube = 0;
+    subeSecimi.value = '0';
+    guncelleSeciliSube();
+    seciliIlceyiAyarla(0);
+  });
+
+  ilceSecimi.addEventListener('change', (event) => {
+    const yeniIlce = parseInt(event.target.value, 10) || 0;
+    doldurSubeler(yeniIlce, 0);
+    seciliSube = 0;
+    guncelleSeciliSube();
+    seciliIlceyiAyarla(yeniIlce);
+  });
+
+  aySecimi.addEventListener('change', (event) => {
+    seciliAy = parseInt(event.target.value, 10) || 0;
+    guncelleSeciliAy();
+    guncelleIlceKarHaritasi();
+    updateLayerStyles();
+    tabloyuGuncelle();
+  });
+
+  subeSecimi.addEventListener('change', (event) => {
+    seciliSube = parseInt(event.target.value, 10) || 0;
+    guncelleSeciliSube();
+    guncelleIlceKarHaritasi();
+    updateLayerStyles();
+    tabloyuGuncelle();
+  });
+
+  function doldurSubeler(ilceId, selectedSubeId) {
+    subeSecimi.innerHTML = '';
+    const optAll = document.createElement('option');
+    optAll.value = '0';
+    optAll.textContent = 'Tüm Şubeler';
+    subeSecimi.appendChild(optAll);
+
+    if (!ilceId || ilceId === 0) {
+      subeSecimi.disabled = true;
+      return;
+    }
+
+    subeSecimi.disabled = false;
+    tumSubeler
+      .filter((s) => s.ilce_id == ilceId)
+      .forEach((s) => {
+        const opt = document.createElement('option');
+        opt.value = s.sube_id;
+        opt.textContent = s.sube_adi;
+        if (selectedSubeId && String(selectedSubeId) === String(s.sube_id)) opt.selected = true;
+        subeSecimi.appendChild(opt);
+      });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    ilceSecimi.value = seciliIlce || '0';
+    aySecimi.value = seciliAy || '0';
+    doldurSubeler(seciliIlce, seciliSube);
+    guncelleSeciliIlce();
+    guncelleSeciliSube();
+    guncelleSeciliAy();
+    guncelleIlceKarHaritasi();
+    updateLayerStyles();
+    tabloyuGuncelle();
+  });
+</script>
+
+<%- include('partials/footer') %>

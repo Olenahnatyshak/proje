@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Giriş - KDS</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Kullanici giris ekrani -->
+  <div class="login-container">
+    <div class="login-box">
+      <h2>Spor Salonu <br>Karar Destek Sistemi<br>Kullanıcı Girişi</h2>
+      <% if (hata) { %>
+        <p class="hata-mesaji"><%= hata %></p>
+      <% } %>
+      <form action="/login" method="post">
+        <input type="text" name="kullanici_adi" placeholder="Kullanıcı Adı" required>
+        <input type="password" name="sifre" placeholder="Şifre" required>
+        <button type="submit">Giriş Yap</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
+
+

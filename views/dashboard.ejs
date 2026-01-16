@@ -1,0 +1,293 @@
+<%- include('partials/header') %>
+<%
+  // TL ve sayı değerlerini okunur hale getiren yardımcı formatlayıcılar
+  const fmtTL = (v, frac = 2) => new Intl.NumberFormat('tr-TR', {
+    minimumFractionDigits: frac,
+    maximumFractionDigits: frac
+  }).format(v || 0) + ' TL';
+  const fmtNum = (v, frac = 0) => new Intl.NumberFormat('tr-TR', {
+    minimumFractionDigits: frac,
+    maximumFractionDigits: frac
+  }).format(v || 0);
+  const ayAdiGetir = (n) => ({
+    1: 'Ocak', 2: 'Şubat', 3: 'Mart', 4: 'Nisan',
+    5: 'Mayıs', 6: 'Haziran', 7: 'Temmuz', 8: 'Ağustos',
+    9: 'Eylül', 10: 'Ekim', 11: 'Kasım', 12: 'Aralık'
+  })[n] || n;
+%>
+
+<div class="header">
+  <h1>Şube Analizleri - <%= ilce_adi %><%= secili_sube_adi ? ' / ' + secili_sube_adi : '' %> (Son <%= zaman_araligi %> Ay)</h1>
+</div>
+
+<!-- İlçe/şube ve zaman aralığı filtresi -->
+<form action="/dashboard" method="get" class="filtre-form">
+  <label for="ilce_id">İlçe Seçin:</label>
+  <select name="ilce_id" id="ilce_id" required>
+    <option value="">-- İlçe Seçiniz --</option>
+    <% ilce_liste.forEach((ilce) => { %>
+      <option value="<%= ilce.ilce_id %>" <%= ilce.ilce_id === secili_ilce_id ? 'selected' : '' %>><%= ilce.ilce_adi %></option>
+    <% }) %>
+  </select>
+
+  <label for="sube_id">Şube Seçin:</label>
+  <select name="sube_id" id="sube_id">
+    <option value="0">Tüm Şubeler</option>
+    <% sube_listesi.forEach((sube) => { %>
+      <option value="<%= sube.sube_id %>" <%= sube.sube_id === secili_sube_id ? 'selected' : '' %>><%= sube.sube_adi %></option>
+    <% }) %>
+  </select>
+
+  <label for="zaman_araligi">Zaman Aralığı:</label>
+  <select name="zaman_araligi" id="zaman_araligi">
+    <option value="6" <%= zaman_araligi === 6 ? 'selected' : '' %>>Son 6 Ay</option>
+    <option value="12" <%= zaman_araligi === 12 ? 'selected' : '' %>>Son 12 Ay</option>
+  </select>
+
+  <button type="submit">Filtrele</button>
+</form>
+
+<script>
+  // İlçe seçimi değişince şube listesini dinamik olarak doldur
+  const tumSubeler = <%- JSON.stringify(tum_subeler || []) %>;
+  const ilceSelect = document.getElementById('ilce_id');
+  const subeSelect = document.getElementById('sube_id');
+  const initialIlce = "<%= secili_ilce_id %>";
+  const initialSube = "<%= secili_sube_id %>";
+
+  function doldurSubeler(ilceId, selectedSubeId) {
+    subeSelect.innerHTML = '';
+    const optAll = document.createElement('option');
+    optAll.value = '0';
+    optAll.textContent = 'Tüm Şubeler';
+    subeSelect.appendChild(optAll);
+
+    if (!ilceId || ilceId === '0') {
+      subeSelect.disabled = true;
+      return;
+    }
+
+    subeSelect.disabled = false;
+    tumSubeler
+      .filter((s) => String(s.ilce_id) === String(ilceId))
+      .forEach((s) => {
+        const opt = document.createElement('option');
+        opt.value = s.sube_id;
+        opt.textContent = s.sube_adi;
+        if (selectedSubeId && String(selectedSubeId) === String(s.sube_id)) {
+          opt.selected = true;
+        }
+        subeSelect.appendChild(opt);
+      });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    doldurSubeler(initialIlce, initialSube);
+    ilceSelect.addEventListener('change', () => {
+      doldurSubeler(ilceSelect.value, '0');
+    });
+  });
+</script>
+
+<% if (secili_ilce_id > 0 && analiz_sonuclari) { %>
+  <!-- Seçilen filtreye ait özet metrik kartları -->
+  <div class="kart-container">
+    <div class="kart">
+      <h3>Toplam Gelir</h3>
+      <p><%= fmtTL(analiz_sonuclari.ToplamGelir) %></p>
+    </div>
+    <div class="kart">
+      <h3>Toplam Kar</h3>
+      <p><%= fmtTL(analiz_sonuclari.ToplamKar) %></p>
+    </div>
+    <div class="kart">
+      <h3>Toplam Maliyet</h3>
+      <p><%= fmtTL(analiz_sonuclari.ToplamMaliyet) %></p>
+    </div>
+    <div class="kart">
+      <h3>Ort. Aktif Üye</h3>
+      <p><%= fmtNum(analiz_sonuclari.OrtalamaAktifUye) %></p>
+    </div>
+    <div class="kart">
+      <h3>Kapasite Kullanımı</h3>
+      <p>%<%= fmtNum(analiz_sonuclari.KapasiteKullanimi, 1) %></p>
+    </div>
+  </div>
+
+  <!-- Aylık gelir/maliyet/karlılık ve dağılım grafikleri -->
+  <div class="grafik-container">
+    <div class="grafik-alani grafik-genis">
+      <h3>Gelir vs Maliyet</h3>
+      <canvas id="gelirMaliyetBarChart"></canvas>
+    </div>
+    <div class="grafik-alani">
+      <h3>Gelir Trendi</h3>
+      <canvas id="gelirTrendiChart"></canvas>
+    </div>
+    <div class="grafik-alani">
+      <h3>Kar Trendi</h3>
+      <canvas id="karTrendiChart"></canvas>
+    </div>
+    <div class="grafik-alani">
+      <h3>Gelir Kaynaklarının Dağılımı</h3>
+      <canvas id="gelirDagilimiChart"></canvas>
+    </div>
+    <div class="grafik-alani">
+      <h3>Maliyet Dağılımı</h3>
+      <canvas id="maliyetDagilimiChart"></canvas>
+    </div>
+    <div class="grafik-alani">
+      <h3>Kar Oranı Trendi</h3>
+      <canvas id="karOraniChart"></canvas>
+    </div>
+    <div class="grafik-alani">
+      <h3>Aktif Üye Trendi</h3>
+      <canvas id="aktifUyeChart"></canvas>
+    </div>
+    <div class="grafik-alani">
+      <h3>Kümülatif Gelir</h3>
+      <canvas id="kumulatifGelirChart"></canvas>
+    </div>
+    <div class="grafik-alani">
+      <h3>Kümülatif Kar</h3>
+      <canvas id="kumulatifKarChart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    // Sayfa yüklendiğinde en üste getir
+    window.onload = function() { window.scrollTo(0, 0); };
+
+    // Sunucudan gelen ham grafik verileri
+    const grafikVerileri = <%- JSON.stringify(grafik_verileri || []) %>;
+
+    function ayAdiGetir(n) {
+      const aylar = {
+        1: 'Ocak', 2: 'Şubat', 3: 'Mart', 4: 'Nisan',
+        5: 'Mayıs', 6: 'Haziran', 7: 'Temmuz', 8: 'Ağustos',
+        9: 'Eylül', 10: 'Ekim', 11: 'Kasım', 12: 'Aralık'
+      };
+      return aylar[n] || n;
+    }
+
+    // Chart.js veri setlerini hazırla
+    const gelirVerileri = grafikVerileri.map((v) => v.gelir);
+    const maliyetVerileri = grafikVerileri.map((v) => v.maliyet);
+    const karVerileri = grafikVerileri.map((v) => v.gelir - v.maliyet);
+    const karOranVerileri = grafikVerileri.map((v) => v.gelir > 0 ? ((v.gelir - v.maliyet) / v.gelir) * 100 : 0);
+    const aktifUyeVerileri = grafikVerileri.map((v) => v.aktif_uye_sayisi);
+    const labelsReady = grafikVerileri.map((v) => `${ayAdiGetir(v.ay)} ${v.yil}`);
+
+    // Grafiklerde kullanılacak kümülatif toplamları hesapla
+    let kumulatifGelir = 0;
+    let kumulatifKar = 0;
+    const kumulatifGelirVerileri = grafikVerileri.map((v) => { kumulatifGelir += v.gelir; return kumulatifGelir; });
+    const kumulatifKarVerileri = grafikVerileri.map((v) => { kumulatifKar += (v.gelir - v.maliyet); return kumulatifKar; });
+
+    // Gelir dağılımı (donut) için paylar
+    const gelirDagilimVerileri = [
+      <%- dagilim_sonuclari.ToplamUyeGeliri || 0 %>,
+      <%- dagilim_sonuclari.ToplamDersGeliri || 0 %>,
+      <%- dagilim_sonuclari.ToplamDigerGelir || 0 %>
+    ];
+
+    // Maliyet dağılımı (donut) için paylar
+    const maliyetDagilimVerileri = [
+      <%- dagilim_sonuclari.ToplamPersonelMaliyeti || 0 %>,
+      <%- dagilim_sonuclari.ToplamKiraMaliyeti || 0 %>,
+      <%- dagilim_sonuclari.ToplamElektrikMaliyeti || 0 %>,
+      <%- dagilim_sonuclari.ToplamSuMaliyeti || 0 %>,
+      <%- dagilim_sonuclari.ToplamBakimMaliyeti || 0 %>,
+      <%- dagilim_sonuclari.ToplamDigerMaliyet || 0 %>
+    ];
+    const hazirlaDagilimVerisi = (labels, data, colors) => {
+      const toplam = data.reduce((a, b) => a + (Number(b) || 0), 0);
+      if (toplam > 0) {
+        return { labels, data, colors };
+      }
+      return { labels: ['Veri yok'], data: [1], colors: ['#bdc3c7'] };
+    };
+    const gelirHazir = hazirlaDagilimVerisi(
+      ['Üyelik Geliri', 'Ders Geliri', 'Diğer Gelir'],
+      gelirDagilimVerileri,
+      ['#3498db', '#2ecc71', '#f39c12']
+    );
+    const maliyetHazir = hazirlaDagilimVerisi(
+      ['Personel', 'Kira', 'Elektrik', 'Su', 'Bakım', 'Diğer Maliyet'],
+      maliyetDagilimVerileri,
+      ['#e74c3c', '#3498db', '#f1c40f', '#2ecc71', '#9b59b6', '#7f8c8d']
+    );
+
+    // Tüm grafiklerde kullanılan ortak ayarlar
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, title: { display: false } }
+    };
+    const doughnutOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }, title: { display: false } } };
+    const xTickOptions = { autoSkip: false, maxRotation: 45, minRotation: 45 };
+
+    new Chart(document.getElementById('gelirMaliyetBarChart').getContext('2d'), {
+      type: 'bar',
+      data: { labels: labelsReady, datasets: [
+        { label: 'Gelir (TL)', data: gelirVerileri, backgroundColor: 'rgba(52, 152, 219, 0.7)', maxBarThickness: 36 },
+        { label: 'Maliyet (TL)', data: maliyetVerileri, backgroundColor: 'rgba(231, 76, 60, 0.7)', maxBarThickness: 36 }
+      ] },
+      options: { ...chartOptions, scales: { x: { ticks: xTickOptions }, y: { beginAtZero: true, ticks: { callback: (v) => v.toLocaleString('tr-TR') + ' TL' } } } }
+    });
+
+    new Chart(document.getElementById('gelirTrendiChart').getContext('2d'), {
+      type: 'line',
+      data: { labels: labelsReady, datasets: [{ label: 'Toplam Gelir (TL)', data: gelirVerileri, borderColor: 'rgb(52, 152, 219)', backgroundColor: 'rgba(52, 152, 219, 0.2)', tension: 0.4, fill: true, pointRadius: 5, pointHoverRadius: 7 }] },
+      options: { ...chartOptions, scales: { x: { ticks: xTickOptions }, y: { beginAtZero: true, ticks: { callback: (v) => v.toLocaleString('tr-TR') + ' TL' } } } }
+    });
+
+    new Chart(document.getElementById('karTrendiChart').getContext('2d'), {
+      type: 'line',
+      data: { labels: labelsReady, datasets: [{ label: 'Toplam Kar (TL)', data: karVerileri, borderColor: 'rgb(46, 204, 113)', backgroundColor: 'rgba(46, 204, 113, 0.2)', tension: 0.4, fill: true, pointRadius: 5, pointHoverRadius: 7 }] },
+      options: { ...chartOptions, scales: { x: { ticks: xTickOptions }, y: { beginAtZero: true, ticks: { callback: (v) => v.toLocaleString('tr-TR') + ' TL' } } } }
+    });
+
+    new Chart(document.getElementById('gelirDagilimiChart').getContext('2d'), {
+      type: 'doughnut',
+      data: { labels: gelirHazir.labels, datasets: [{ data: gelirHazir.data, backgroundColor: gelirHazir.colors, hoverOffset: 4 }] },
+      options: doughnutOptions
+    });
+
+    new Chart(document.getElementById('maliyetDagilimiChart').getContext('2d'), {
+      type: 'doughnut',
+      data: { labels: maliyetHazir.labels, datasets: [{ data: maliyetHazir.data, backgroundColor: maliyetHazir.colors, hoverOffset: 4 }] },
+      options: doughnutOptions
+    });
+
+    new Chart(document.getElementById('karOraniChart').getContext('2d'), {
+      type: 'line',
+      data: { labels: labelsReady, datasets: [{ label: 'Kar Oranı (%)', data: karOranVerileri, borderColor: '#9b59b6', backgroundColor: 'rgba(155, 89, 182, 0.2)', fill: true, tension: 0.4, pointRadius: 4, pointHoverRadius: 6 }] },
+      options: { ...chartOptions, scales: { x: { ticks: xTickOptions }, y: { beginAtZero: true, ticks: { callback: (v) => v.toLocaleString('tr-TR') + ' %' } } } }
+    });
+
+    new Chart(document.getElementById('aktifUyeChart').getContext('2d'), {
+      type: 'line',
+      data: { labels: labelsReady, datasets: [{ label: 'Aktif Üye', data: aktifUyeVerileri, borderColor: '#16a085', backgroundColor: 'rgba(22, 160, 133, 0.2)', fill: true, tension: 0.4, pointRadius: 4, pointHoverRadius: 6 }] },
+      options: { ...chartOptions, scales: { x: { ticks: xTickOptions }, y: { beginAtZero: true, ticks: { callback: (v) => v.toLocaleString('tr-TR') } } } }
+    });
+
+    new Chart(document.getElementById('kumulatifGelirChart').getContext('2d'), {
+      type: 'line',
+      data: { labels: labelsReady, datasets: [{ label: 'Kümülatif Gelir (TL)', data: kumulatifGelirVerileri, borderColor: '#1abc9c', backgroundColor: 'rgba(26, 188, 156, 0.2)', fill: true, tension: 0.4, pointRadius: 4, pointHoverRadius: 6 }] },
+      options: { ...chartOptions, scales: { x: { ticks: xTickOptions }, y: { beginAtZero: true, ticks: { callback: (v) => v.toLocaleString('tr-TR') + ' TL' } } } }
+    });
+
+    new Chart(document.getElementById('kumulatifKarChart').getContext('2d'), {
+      type: 'line',
+      data: { labels: labelsReady, datasets: [{ label: 'Kümülatif Kar (TL)', data: kumulatifKarVerileri, borderColor: '#34495e', backgroundColor: 'rgba(52, 73, 94, 0.2)', fill: true, tension: 0.4, pointRadius: 4, pointHoverRadius: 6 }] },
+      options: { ...chartOptions, scales: { x: { ticks: xTickOptions }, y: { beginAtZero: true, ticks: { callback: (v) => v.toLocaleString('tr-TR') + ' TL' } } } }
+    });
+  </script>
+<% } else if (secili_ilce_id > 0 && !analiz_sonuclari) { %>
+  <p>Seçilen ilçe için son <%= zaman_araligi %> aya ait veri bulunamadı.</p>
+<% } else { %>
+  <p>Lütfen menüden bir ilçe seçerek analize başlayın.</p>
+<% } %>
+
+<%- include('partials/footer') %>

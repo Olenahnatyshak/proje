@@ -1,0 +1,96 @@
+<%- include('partials/header') %>
+<div class="header">
+  <h1>Şube Karar Destek Önerileri</h1>
+  <p>Gelir ve maliyetlere göre ilçe/şube bazlı açma-kapatma-iyileştirme önerileri.</p>
+</div>
+
+<!-- İlçe/şube ve öneri tipi filtresi -->
+<form action="/oneriler" method="get" class="filtre-form">
+  <label for="ilce_id">İlçe Seçin:</label>
+  <select name="ilce_id" id="ilce_id">
+    <option value="0">Tüm İlçeler</option>
+    <% ilceler.forEach((ilce) => { %>
+      <option value="<%= ilce.ilce_id %>" <%= ilce.ilce_id === secili_ilce_id ? 'selected' : '' %>><%= ilce.ilce_adi %></option>
+    <% }); %>
+  </select>
+
+  <label for="sube_id">Şube Seçin:</label>
+  <select name="sube_id" id="sube_id">
+    <option value="0">Tüm Şubeler</option>
+    <% sube_listesi.forEach((sube) => { %>
+      <option value="<%= sube.sube_id %>" <%= sube.sube_id === secili_sube_id ? 'selected' : '' %>><%= sube.sube_adi %></option>
+    <% }); %>
+  </select>
+
+  <label for="oneri_tipi">Öneri Tipi:</label>
+  <select name="oneri_tipi" id="oneri_tipi">
+    <option value="all" <%= secili_oneri_tipi === 'all' ? 'selected' : '' %>>Tüm Öneriler</option>
+    <option value="ac" <%= secili_oneri_tipi === 'ac' ? 'selected' : '' %>>Yeni Şube Açma</option>
+    <option value="kapat" <%= secili_oneri_tipi === 'kapat' ? 'selected' : '' %>>Kapatma / Taşıma</option>
+    <option value="pazarlama" <%= secili_oneri_tipi === 'pazarlama' ? 'selected' : '' %>>İyileştirme / Pazarlama</option>
+  </select>
+
+  <label for="zaman_araligi">Zaman Aralığı:</label>
+  <select name="zaman_araligi" id="zaman_araligi">
+    <option value="6" <%= zaman_araligi === 6 ? 'selected' : '' %>>Son 6 Ay</option>
+    <option value="12" <%= zaman_araligi === 12 ? 'selected' : '' %>>Son 12 Ay</option>
+  </select>
+
+  <button type="submit">Filtrele</button>
+</form>
+
+<script>
+  // İlçe değişince şube listesini dinamik doldur
+  const tumSubeler = <%- JSON.stringify(tum_subeler || []) %>;
+  const ilceSelect = document.getElementById('ilce_id');
+  const subeSelect = document.getElementById('sube_id');
+  const initialIlce = "<%= secili_ilce_id %>";
+  const initialSube = "<%= secili_sube_id %>";
+
+  function doldurSubeler(ilceId, selectedSubeId) {
+    subeSelect.innerHTML = '';
+    const optAll = document.createElement('option');
+    optAll.value = '0';
+    optAll.textContent = 'Tüm Şubeler';
+    subeSelect.appendChild(optAll);
+
+    if (!ilceId || ilceId === '0') {
+      subeSelect.disabled = true;
+      return;
+    }
+
+    subeSelect.disabled = false;
+    tumSubeler
+      .filter((s) => String(s.ilce_id) === String(ilceId))
+      .forEach((s) => {
+        const opt = document.createElement('option');
+        opt.value = s.sube_id;
+        opt.textContent = s.sube_adi;
+        if (selectedSubeId && String(selectedSubeId) === String(s.sube_id)) {
+          opt.selected = true;
+        }
+        subeSelect.appendChild(opt);
+      });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    doldurSubeler(initialIlce, initialSube);
+    ilceSelect.addEventListener('change', () => {
+      doldurSubeler(ilceSelect.value, '0');
+    });
+  });
+</script>
+
+<% if (!oneriler || oneriler.length === 0) { %>
+  <p>Seçilen filtrelere göre gösterilecek öneri bulunamadı.</p>
+<% } else { %>
+  <!-- Filtreye uyan öneri kartları -->
+  <% oneriler.forEach((oneri) => { %>
+    <div class="oneri-karti <%= oneri.tip %><%= oneri.extra_class ? ' ' + oneri.extra_class : '' %>">
+      <h3><%= oneri.baslik %></h3>
+      <p><%= oneri.metin %></p>
+    </div>
+  <% }); %>
+<% } %>
+
+<%- include('partials/footer') %>
