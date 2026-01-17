@@ -15,9 +15,11 @@ doğru karar almasını sağlamaktır.
 ---
 
 ## 🧩 Senaryo Tanımı
-Sistemde şube ve personel verileri analiz edilir.
-Performans özetleri, harita görünümleri ve otomatik öneriler sunulur.
-Yöneticiler bu ekranlar üzerinden genel durumu takip edebilir.
+Bu proje, MacFit spor salonu zincirinin İzmir bölgesindeki şube operasyonlarını veriye dayalı bir stratejiyle
+yönetebilmek amacıyla geliştirilmiş bir Karar Destek Sistemi (KDS) çözümüdür. Sistemin temel odak noktası; İzmir
+ilindeki ilçelerin müşteri yoğunluğu, şube maliyetleri ve gelir performanslarını analiz ederek yöneticilerin yeni şube
+açma, mevcut şubeyi iyileştirme veya düşük performanslı şubeleri kapatma kararlarını objektif verilerle almasını
+sağlamaktır.
 
 ---
 
